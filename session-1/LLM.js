@@ -1,7 +1,15 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import readlineSync from "readline-sync";
+import { join } from "node:path";
 
-process.loadEnvFile();
+// This makes sure it finds the .env at the root,
+// even if you run the file from inside the session-1 folder.
+try {
+  process.loadEnvFile(join(import.meta.dirname, "../.env"));
+} catch (e) {
+  // Fallback to default load if the above fails
+  process.loadEnvFile();
+}
 
 const ai = new GoogleGenerativeAI(process.env.API_KEY);
 const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
