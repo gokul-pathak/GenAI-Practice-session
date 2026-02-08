@@ -12,13 +12,11 @@ try {
 // =========================
 // OPENROUTER SETUP
 // =========================
-const apiKey = process.env.OPENROUTER_API_KEY?.trim().replace(/,+$/, ""); // Remove trailing commas
 const openRouter = new OpenRouter({
-  apiKey: apiKey,
+  apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-console.log("OPENROUTER_API_KEY:", apiKey);
-console.log("API Key length:", apiKey?.length);
+console.log("OPENROUTER_API_KEY:", process.env.OPENROUTER_API_KEY);
 
 // =========================
 // CHAT HISTORY (PERSISTED)
@@ -124,21 +122,14 @@ const toolFunctions = { loveCalculator, getGithubUser, getCryptoPrice };
 // HELPER TO SEND MESSAGE
 // =========================
 async function sendMessage(messages) {
-  console.log("Sending to AI...");
-  try {
-    const completion = await openRouter.chat.send({
-      chatGenerationParams: {
-        model: "meta-llama/llama-3.1-8b-instruct:free", // Use a free model
-        messages,
-        stream: false,
-        max_tokens: 1024, // Limit token usage
-      },
-    });
-    return completion.choices[0].message.content;
-  } catch (err) {
-    console.error("🔴 API Error:", err);
-    throw err;
-  }
+  const completion = await openRouter.chat.send({
+    chatGenerationParams: {
+      model: "openai/gpt-5.2",
+      messages,
+      stream: false,
+    },
+  });
+  return completion.choices[0].message.content;
 }
 
 function preprocessInput(userInput) {
@@ -157,7 +148,6 @@ async function main() {
   //   const userProblem = readlineSync.question("Ask me anything --> ");
   let userProblem = readlineSync.question("Ask me anything --> ");
   userProblem = preprocessInput(userProblem); // <-- preprocess
-  console.log("🔍 Preprocessed Input:", userProblem); // <-- Add this log
 
   if (userProblem.toLowerCase() === "exit") return console.log("Bye 👋");
 
@@ -172,31 +162,23 @@ async function main() {
     ];
 
     const aiResponse = await sendMessage(messages);
-    console.log("🔍 Raw AI Response:", aiResponse);
 
     let finalText = aiResponse;
 
     try {
       const parsed = JSON.parse(aiResponse);
-      console.log("🔍 Parsed JSON:", parsed);
 
       if (parsed.tool && toolFunctions[parsed.tool]) {
         console.log(`Tool Called: ${parsed.tool}`, parsed.args);
 
-        try {
-          const toolResult = await toolFunctions[parsed.tool](parsed.args);
-          console.log("🔍 Tool Result:", toolResult);
+        const toolResult = await toolFunctions[parsed.tool](parsed.args);
 
-          chatHistory.push({
-            role: "assistant",
-            content: JSON.stringify(toolResult),
-          });
+        chatHistory.push({
+          role: "assistant",
+          content: JSON.stringify(toolResult),
+        });
 
-          finalText = `Tool Result: ${JSON.stringify(toolResult)}`;
-        } catch (toolErr) {
-          console.error("🔴 Tool Error:", toolErr);
-          finalText = `Tool Error: ${toolErr.message}`;
-        }
+        finalText = `Tool Result: ${JSON.stringify(toolResult)}`;
       }
     } catch {
       // Normal chat, not JSON
