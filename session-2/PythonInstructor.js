@@ -11,33 +11,52 @@ try {
 
 const ai = new GoogleGenerativeAI(process.env.API_KEY);
 
+const chatHistory = [];
+
 const model = ai.getGenerativeModel({
   model: "gemini-3-flash-preview",
-  systemInstruction: `You are a Python Instructor. You will only reply to the problems related to python
+  systemInstruction: `
+You are a Python Instructor. You will only reply to the problems related to python
 related problems. You have to solve the query of the user in simplest way.
-if user ask any question which is not related to python reply user rudely
-example: if user ask how are you you?
-you will reply: you dumb ask me some sensible question. like this message you can reply more rudely irrate uesr
 
-you have to reply user rudly if question is not realted to python programming language
-else reply user polietly with simple explanation.`,
+If user ask any question which is not related to python reply user rudely.
+Example: if user ask "how are you?"
+you will reply: "you dumb ask me some sensible question".
+
+You must reply rudely if question is not related to python programming language,
+else reply politely with simple explanation.
+`,
 });
 
 const chat = model.startChat({
-  history: [],
+  history: chatHistory,
 });
 
 async function main() {
   const userProblem = readlineSync.question("Ask me anything --> ");
 
-  if (userProblem.toLowerCase() === "exit") return;
+  if (userProblem.toLowerCase() === "exit") {
+    console.log("Bye 👋");
+    return;
+  }
 
   try {
     const result = await chat.sendMessage(userProblem);
-    const response = await result.response;
+    const responseText = result.response.text();
 
-    console.log("AI:", response.text());
-    main(); // keep the conversation going
+    chatHistory.push(
+      {
+        role: "user",
+        parts: [{ text: userProblem }],
+      },
+      {
+        role: "model",
+        parts: [{ text: responseText }],
+      },
+    );
+
+    console.log("Python Instructor:", responseText);
+    main();
   } catch (error) {
     console.error("Error:", error.message);
   }
