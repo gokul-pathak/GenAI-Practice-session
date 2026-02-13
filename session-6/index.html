@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EX Chat Assistant</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f5f5f5;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    height: 100vh;
+  }
+
+  .container {
+    width: 400px;
+    margin-top: 50px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    padding: 15px;
+    background: #4CAF50;
+    color: #fff;
+    font-size: 1.2em;
+    border-radius: 10px 10px 0 0;
+    text-align: center;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .header button {
+    font-size: 0.8em;
+    padding: 5px 10px;
+    border-radius: 5px;
+    border: none;
+    background: #fff;
+    color: #4CAF50;
+    cursor: pointer;
+  }
+
+  .header button:hover {
+    background: #e0e0e0;
+  }
+
+  #chat {
+    padding: 15px;
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: #fefefe;
+  }
+
+  .message {
+    max-width: 80%;
+    padding: 10px 15px;
+    border-radius: 20px;
+    word-wrap: break-word;
+    font-size: 0.95em;
+  }
+
+  .user {
+    align-self: flex-end;
+    background: #cce5ff;
+    color: #004085;
+    border-bottom-right-radius: 0;
+  }
+
+  .bot {
+    align-self: flex-start;
+    background: #d4edda;
+    color: #155724;
+    border-bottom-left-radius: 0;
+  }
+
+  .typing {
+    align-self: flex-start;
+    font-style: italic;
+    color: #888;
+    margin-bottom: 5px;
+  }
+
+  .input-container {
+    display: flex;
+    padding: 10px;
+    border-top: 1px solid #ddd;
+  }
+
+  input {
+    flex: 1;
+    padding: 10px;
+    border-radius: 20px;
+    border: 1px solid #ccc;
+    outline: none;
+    font-size: 0.95em;
+  }
+
+  button.send-btn {
+    margin-left: 10px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 20px;
+    background: #4CAF50;
+    color: white;
+    font-size: 0.95em;
+    cursor: pointer;
+  }
+
+  button.send-btn:hover {
+    background: #45a049;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    EX Chat Assistant
+    <button onclick="resetChat()">Reset Chat</button>
+  </div>
+  <div id="chat"></div>
+  <div class="input-container">
+    <input id="message" placeholder="Type your message..." />
+    <button class="send-btn" onclick="sendMessage()">Send</button>
+  </div>
+</div>
+
+<script>
+async function sendMessage() {
+  const input = document.getElementById("message");
+  const chat = document.getElementById("chat");
+
+  const userText = input.value.trim();
+  if (!userText) return;
+
+  // Add user message
+  const userDiv = document.createElement("div");
+  userDiv.className = "message user";
+  userDiv.textContent = userText;
+  chat.appendChild(userDiv);
+  chat.scrollTop = chat.scrollHeight;
+
+  input.value = "";
+  input.disabled = true;
+
+  // Show typing indicator
+  const typingDiv = document.createElement("div");
+  typingDiv.className = "typing";
+  typingDiv.textContent = "Bot is typing...";
+  chat.appendChild(typingDiv);
+  chat.scrollTop = chat.scrollHeight;
+
+  try {
+    const response = await fetch("http://127.0.0.1:8000/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: userText, session_id: "default" })
+    });
+
+    const data = await response.json();
+
+    // Remove typing indicator
+    typingDiv.remove();
+
+    // Add bot message
+    const botDiv = document.createElement("div");
+    botDiv.className = "message bot";
+    botDiv.textContent = data.reply;
+    chat.appendChild(botDiv);
+    chat.scrollTop = chat.scrollHeight;
+
+  } catch (err) {
+    typingDiv.remove();
+    const errorDiv = document.createElement("div");
+    errorDiv.className = "message bot";
+    errorDiv.textContent = "Error: Unable to reach server.";
+    chat.appendChild(errorDiv);
+    chat.scrollTop = chat.scrollHeight;
+    console.error(err);
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+// Send message on Enter key
+document.getElementById("message").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    e.preventDefault(); // prevent newline
+    sendMessage();
+  }
+});
+
+// Reset chat session
+async function resetChat() {
+  const chat = document.getElementById("chat");
+  chat.innerHTML = ""; // clear chat UI
+
+  try {
+    await fetch("http://127.0.0.1:8000/clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: "default" })
+    });
+  } catch (err) {
+    console.error("Failed to reset session:", err);
+  }
+}
+</script>
+
+</body>
+</html>
