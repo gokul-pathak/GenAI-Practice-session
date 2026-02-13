@@ -26,3 +26,5 @@ numpy
 scikit-learn
 
 langchain-community
+fastapi 
+uvicorn
