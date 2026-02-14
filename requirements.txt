@@ -28,3 +28,6 @@ scikit-learn
 langchain-community
 fastapi 
 uvicorn
+supabase
+pdfplumber 
+python-docx
