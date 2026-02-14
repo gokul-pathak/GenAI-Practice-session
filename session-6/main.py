@@ -1,21 +1,22 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.runnables import RunnableLambda
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_community.chat_message_histories import ChatMessageHistory
-from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import HTTPException
-
+from pathlib import Path
+from dotenv import load_dotenv
 import os
 
-load_dotenv()
+from langchain_ollama import ChatOllama
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_community.chat_message_histories import ChatMessageHistory
+
+# Load .env from root directory
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 app = FastAPI()
 
-
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,15 +25,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-base_url = os.getenv("BASE_URL_OLLAMA")
-system_prompt = os.getenv("EX_PROMPT")
+# Load environment variables
+base_url = os.getenv("BASE_URL_OLLAMA", "http://localhost:11434")
+system_prompt = os.getenv("EX_PROMPT", "You are a helpful AI assistant.")
 
+print(f"Base URL: {base_url}")
+print(f"System Prompt Loaded: {system_prompt[:60]}...")
+
+# Initialize LLM
 llm = ChatOllama(
     model="kimi-k2.5:cloud",
     base_url=base_url
 )
 
-# In-memory store
+# In-memory session store
 store = {}
 
 def get_session_history(session_id: str):
@@ -40,38 +46,55 @@ def get_session_history(session_id: str):
         store[session_id] = ChatMessageHistory()
     return store[session_id]
 
-def add_system_message(messages):
-    return [SystemMessage(content=system_prompt)] + messages
+# Proper prompt structure (System + History + Human)
+prompt = ChatPromptTemplate.from_messages([
+    ("system", system_prompt),
+    MessagesPlaceholder(variable_name="history"),
+    ("human", "{input}")
+])
 
-chain = RunnableLambda(add_system_message) | llm
+# Chain
+chain = prompt | llm
 
 chat = RunnableWithMessageHistory(
     chain,
-    get_session_history
+    get_session_history,
+    input_messages_key="input",
+    history_messages_key="history"
 )
 
+# Request Models
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
 
+class ClearRequest(BaseModel):
+    session_id: str = "default"
+
+# Chat Endpoint
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
-    response = chat.invoke(
-        [HumanMessage(content=req.message)],
-        config={"configurable": {"session_id": req.session_id}}
-    )
-    return {"reply": response.content}
+    try:
+        response = chat.invoke(
+            {"input": req.message},
+            config={"configurable": {"session_id": req.session_id}}
+        )
+        return {"reply": response.content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
+# Clear Single Session
 @app.post("/clear")
-async def clear_context(session_id: str = "default"):
-    if session_id in store:
-        store[session_id].clear()  # clears ChatMessageHistory
-        return {"status": "success", "message": f"Session '{session_id}' cleared"}
+async def clear_context(req: ClearRequest):
+    if req.session_id in store:
+        store[req.session_id].clear()
+        return {"status": "success", "message": f"Session '{req.session_id}' cleared"}
     else:
         raise HTTPException(status_code=404, detail="Session not found")
-    
 
+
+# Clear All Sessions
 @app.post("/clear_all")
 async def clear_all_sessions():
     for session in store.values():
