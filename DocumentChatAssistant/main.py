@@ -170,11 +170,29 @@ Question:
 
 
 # -------------------------
-# Clear Chat Session
+# Clear Chat Session and Delete Document
 # -------------------------
 @app.post("/clear")
 async def clear_context(req: ClearRequest):
+    # Clear chat session
     if req.session_id in chat_store:
         chat_store[req.session_id].clear()
-        return {"status": "success", "message": f"Session '{req.session_id}' cleared"}
-    raise HTTPException(status_code=404, detail="Session not found")
+
+    # Delete all documents from memory and Supabase
+    removed_docs = []
+    for doc_id, doc in list(document_store.items()):
+        try:
+            # Remove from Supabase storage
+            sb_client.storage.from_("documents").remove([doc["storage_path"]])
+        except Exception as e:
+            # Log but continue
+            print(f"Error deleting {doc['storage_path']} from storage: {e}")
+        removed_docs.append(doc["filename"])
+        # Remove from in-memory store
+        del document_store[doc_id]
+
+    return {
+        "status": "success",
+        "message": f"Session '{req.session_id}' cleared",
+        "deleted_documents": removed_docs
+    }
