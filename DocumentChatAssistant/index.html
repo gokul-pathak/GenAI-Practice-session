@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Document Chat Assistant</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f4f4f9;
+        display: flex;
+        height: 100vh;
+      }
+
+      /* Sidebar */
+      .sidebar {
+        width: 300px;
+        background: #fff;
+        border-right: 1px solid #ddd;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .sidebar h2 {
+        margin: 0;
+        padding: 15px;
+        border-bottom: 1px solid #ddd;
+        background: #f0f0f0;
+        text-align: center;
+      }
+
+      .upload-section {
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .upload-section input[type="file"] {
+        padding: 5px;
+      }
+
+      .document-list {
+        flex: 1;
+        overflow-y: auto;
+        border-top: 1px solid #ddd;
+        padding: 10px;
+      }
+
+      .document-item {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .document-item:hover,
+      .document-item.active {
+        background: #e0f7ff;
+      }
+
+      /* Chat panel */
+      .chat-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #f9f9f9;
+      }
+
+      .chat-header {
+        padding: 15px;
+        background: #1976d2;
+        color: #fff;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .chat-messages {
+        flex: 1;
+        padding: 15px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .message {
+        max-width: 70%;
+        padding: 10px 15px;
+        border-radius: 20px;
+        word-wrap: break-word;
+        line-height: 1.4;
+        position: relative;
+        animation: fadeIn 0.2s ease;
+      }
+
+      .user {
+        align-self: flex-end;
+        background: #1976d2;
+        color: #fff;
+        border-bottom-right-radius: 0;
+      }
+
+      .bot {
+        align-self: flex-start;
+        background: #e0e0e0;
+        color: #000;
+        border-bottom-left-radius: 0;
+      }
+
+      .typing {
+        align-self: flex-start;
+        font-style: italic;
+        color: #666;
+      }
+
+      .input-container {
+        display: flex;
+        padding: 10px;
+        border-top: 1px solid #ddd;
+        background: #fff;
+        gap: 10px;
+      }
+
+      .input-container input {
+        flex: 1;
+        padding: 10px;
+        border-radius: 20px;
+        border: 1px solid #ccc;
+        outline: none;
+      }
+
+      .input-container button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 20px;
+        background: #1976d2;
+        color: #fff;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .input-container button:hover {
+        background: #115293;
+      }
+
+      iframe.preview {
+        width: 100%;
+        height: 200px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        margin-top: 10px;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(5px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Sidebar for uploading documents -->
+    <div class="sidebar">
+      <h2>Documents</h2>
+      <div class="upload-section">
+        <input type="file" id="fileInput" />
+        <input type="text" id="fileDesc" placeholder="Optional description" />
+        <button onclick="uploadFile()">Upload</button>
+        <div id="uploadStatus"></div>
+        <iframe id="docPreview" class="preview" style="display: none"></iframe>
+      </div>
+      <div class="document-list" id="documentList"></div>
+    </div>
+
+    <!-- Chat panel -->
+    <div class="chat-container">
+      <div class="chat-header">
+        Document Chat Assistant
+        <button onclick="resetChat()">Reset</button>
+      </div>
+      <div class="chat-messages" id="chat"></div>
+      <div class="input-container">
+        <input id="message" placeholder="Type your question..." />
+        <button onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+
+    <!-- Bot reply sound -->
+    <audio
+      id="botSound"
+      src="https://www.soundjay.com/button/beep-07.wav"
+    ></audio>
+
+    <script>
+      let currentDocumentId = null;
+      let sessionId = "default";
+      const documents = [];
+
+      async function uploadFile() {
+        const fileInput = document.getElementById("fileInput");
+        if (!fileInput.files.length) return alert("Select a file");
+
+        const file = fileInput.files[0];
+        const desc = document.getElementById("fileDesc").value;
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("metadata", JSON.stringify({ description: desc }));
+
+        document.getElementById("uploadStatus").textContent = "Uploading...";
+
+        try {
+          const res = await fetch("http://127.0.0.1:8000/upload_document", {
+            method: "POST",
+            body: formData,
+          });
+          const data = await res.json();
+          if (data.status === "success") {
+            currentDocumentId = data.document_id;
+            document.getElementById("uploadStatus").textContent =
+              `Uploaded: ${data.filename}`;
+
+            // Add to document list
+            documents.push(data);
+            renderDocuments();
+
+            // Preview document if possible
+            previewDocument(file);
+          } else {
+            document.getElementById("uploadStatus").textContent =
+              "Upload failed";
+          }
+        } catch (err) {
+          console.error(err);
+          document.getElementById("uploadStatus").textContent =
+            "Error uploading file";
+        }
+      }
+
+      function renderDocuments() {
+        const list = document.getElementById("documentList");
+        list.innerHTML = "";
+        documents.forEach((doc) => {
+          const div = document.createElement("div");
+          div.className =
+            "document-item" +
+            (doc.document_id === currentDocumentId ? " active" : "");
+          div.textContent = doc.filename;
+          div.onclick = () => selectDocument(doc);
+          list.appendChild(div);
+        });
+      }
+
+      function selectDocument(doc) {
+        currentDocumentId = doc.document_id;
+        renderDocuments();
+        document.getElementById("docPreview").style.display = "block";
+        // preview is not stored from server, just show local file if possible
+      }
+
+      function previewDocument(file) {
+        const preview = document.getElementById("docPreview");
+        const url = URL.createObjectURL(file);
+        if (file.type === "application/pdf") {
+          preview.src = url;
+          preview.style.display = "block";
+        } else if (file.type.startsWith("text/")) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            preview.srcdoc = `<pre>${reader.result}</pre>`;
+            preview.style.display = "block";
+          };
+          reader.readAsText(file);
+        } else {
+          preview.style.display = "none";
+        }
+      }
+
+      async function sendMessage() {
+        if (!currentDocumentId) return alert("Upload a document first");
+
+        const input = document.getElementById("message");
+        const chat = document.getElementById("chat");
+        const userText = input.value.trim();
+        if (!userText) return;
+
+        const userDiv = document.createElement("div");
+        userDiv.className = "message user";
+        userDiv.textContent = userText;
+        chat.appendChild(userDiv);
+        chat.scrollTop = chat.scrollHeight;
+
+        input.value = "";
+
+        const typingDiv = document.createElement("div");
+        typingDiv.className = "typing";
+        typingDiv.textContent = "Bot is typing...";
+        chat.appendChild(typingDiv);
+        chat.scrollTop = chat.scrollHeight;
+
+        try {
+          const res = await fetch("http://127.0.0.1:8000/query_document", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              document_id: currentDocumentId,
+              message: userText,
+              session_id: sessionId,
+            }),
+          });
+          const data = await res.json();
+          typingDiv.remove();
+
+          const botDiv = document.createElement("div");
+          botDiv.className = "message bot";
+          botDiv.textContent = data.reply;
+          chat.appendChild(botDiv);
+          chat.scrollTop = chat.scrollHeight;
+
+          // Play sound on bot reply
+          document.getElementById("botSound").play();
+        } catch (err) {
+          console.error(err);
+          typingDiv.textContent = "Error: Could not reach server";
+        }
+      }
+
+      async function resetChat() {
+        const chat = document.getElementById("chat");
+        chat.innerHTML = "";
+        try {
+          await fetch("http://127.0.0.1:8000/clear", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId }),
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    </script>
+  </body>
+</html>
