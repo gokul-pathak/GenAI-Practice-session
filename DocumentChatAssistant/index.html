@@ -3,193 +3,75 @@
   <head>
     <meta charset="UTF-8" />
     <title>Document Chat Assistant</title>
-    <style>
-      body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: #f4f4f9;
-        display: flex;
-        height: 100vh;
-      }
-
-      /* Sidebar */
-      .sidebar {
-        width: 300px;
-        background: #fff;
-        border-right: 1px solid #ddd;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .sidebar h2 {
-        margin: 0;
-        padding: 15px;
-        border-bottom: 1px solid #ddd;
-        background: #f0f0f0;
-        text-align: center;
-      }
-
-      .upload-section {
-        padding: 15px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .upload-section input[type="file"] {
-        padding: 5px;
-      }
-
-      .document-list {
-        flex: 1;
-        overflow-y: auto;
-        border-top: 1px solid #ddd;
-        padding: 10px;
-      }
-
-      .document-item {
-        padding: 8px;
-        border-bottom: 1px solid #eee;
-        cursor: pointer;
-        transition: background 0.2s;
-      }
-
-      .document-item:hover,
-      .document-item.active {
-        background: #e0f7ff;
-      }
-
-      /* Chat panel */
-      .chat-container {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        background: #f9f9f9;
-      }
-
-      .chat-header {
-        padding: 15px;
-        background: #1976d2;
-        color: #fff;
-        font-weight: bold;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .chat-messages {
-        flex: 1;
-        padding: 15px;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .message {
-        max-width: 70%;
-        padding: 10px 15px;
-        border-radius: 20px;
-        word-wrap: break-word;
-        line-height: 1.4;
-        position: relative;
-        animation: fadeIn 0.2s ease;
-      }
-
-      .user {
-        align-self: flex-end;
-        background: #1976d2;
-        color: #fff;
-        border-bottom-right-radius: 0;
-      }
-
-      .bot {
-        align-self: flex-start;
-        background: #e0e0e0;
-        color: #000;
-        border-bottom-left-radius: 0;
-      }
-
-      .typing {
-        align-self: flex-start;
-        font-style: italic;
-        color: #666;
-      }
-
-      .input-container {
-        display: flex;
-        padding: 10px;
-        border-top: 1px solid #ddd;
-        background: #fff;
-        gap: 10px;
-      }
-
-      .input-container input {
-        flex: 1;
-        padding: 10px;
-        border-radius: 20px;
-        border: 1px solid #ccc;
-        outline: none;
-      }
-
-      .input-container button {
-        padding: 10px 20px;
-        border: none;
-        border-radius: 20px;
-        background: #1976d2;
-        color: #fff;
-        cursor: pointer;
-        transition: background 0.2s;
-      }
-
-      .input-container button:hover {
-        background: #115293;
-      }
-
-      iframe.preview {
-        width: 100%;
-        height: 200px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        margin-top: 10px;
-      }
-
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-          transform: translateY(5px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
   </head>
-  <body>
-    <!-- Sidebar for uploading documents -->
-    <div class="sidebar">
-      <h2>Documents</h2>
-      <div class="upload-section">
-        <input type="file" id="fileInput" />
-        <input type="text" id="fileDesc" placeholder="Optional description" />
-        <button onclick="uploadFile()">Upload</button>
-        <div id="uploadStatus"></div>
-        <iframe id="docPreview" class="preview" style="display: none"></iframe>
+  <body class="h-screen flex bg-gray-100 font-sans">
+    <!-- Sidebar -->
+    <div class="w-[300px] bg-white border-r border-gray-300 flex flex-col">
+      <h2
+        class="m-0 p-4 border-b border-gray-300 bg-gray-100 text-center font-semibold"
+      >
+        Documents
+      </h2>
+
+      <div class="p-4 flex flex-col gap-3">
+        <input type="file" id="fileInput" class="p-1 border rounded" />
+        <input
+          type="text"
+          id="fileDesc"
+          placeholder="Optional description"
+          class="p-2 border rounded-md outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          onclick="uploadFile()"
+          class="bg-blue-600 hover:bg-blue-800 text-white py-2 rounded-full transition"
+        >
+          Upload
+        </button>
+        <div id="uploadStatus" class="text-sm text-gray-600"></div>
+        <iframe
+          id="docPreview"
+          class="w-full h-[200px] border rounded mt-2 hidden"
+        ></iframe>
       </div>
-      <div class="document-list" id="documentList"></div>
+
+      <div
+        class="flex-1 overflow-y-auto border-t border-gray-300 p-3"
+        id="documentList"
+      ></div>
     </div>
 
-    <!-- Chat panel -->
-    <div class="chat-container">
-      <div class="chat-header">
+    <!-- Chat Panel -->
+    <div class="flex-1 flex flex-col bg-gray-50">
+      <div
+        class="p-4 bg-blue-600 text-white font-bold flex justify-between items-center"
+      >
         Document Chat Assistant
-        <button onclick="resetChat()">Reset</button>
+        <button
+          onclick="resetChat()"
+          class="bg-white text-blue-600 px-4 py-1 rounded-full hover:bg-gray-200 transition"
+        >
+          Reset
+        </button>
       </div>
-      <div class="chat-messages" id="chat"></div>
-      <div class="input-container">
-        <input id="message" placeholder="Type your question..." />
-        <button onclick="sendMessage()">Send</button>
+
+      <div
+        class="flex-1 p-4 overflow-y-auto flex flex-col gap-3"
+        id="chat"
+      ></div>
+
+      <div class="flex p-3 border-t border-gray-300 bg-white gap-3">
+        <input
+          id="message"
+          placeholder="Type your question..."
+          class="flex-1 p-3 border rounded-full outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          onclick="sendMessage()"
+          class="bg-blue-600 hover:bg-blue-800 text-white px-6 py-2 rounded-full transition"
+        >
+          Send
+        </button>
       </div>
     </div>
 
@@ -228,11 +110,8 @@
             document.getElementById("uploadStatus").textContent =
               `Uploaded: ${data.filename}`;
 
-            // Add to document list
             documents.push(data);
             renderDocuments();
-
-            // Preview document if possible
             previewDocument(file);
           } else {
             document.getElementById("uploadStatus").textContent =
@@ -251,8 +130,8 @@
         documents.forEach((doc) => {
           const div = document.createElement("div");
           div.className =
-            "document-item" +
-            (doc.document_id === currentDocumentId ? " active" : "");
+            "p-2 border-b border-gray-200 cursor-pointer hover:bg-blue-100 transition" +
+            (doc.document_id === currentDocumentId ? " bg-blue-100" : "");
           div.textContent = doc.filename;
           div.onclick = () => selectDocument(doc);
           list.appendChild(div);
@@ -262,8 +141,7 @@
       function selectDocument(doc) {
         currentDocumentId = doc.document_id;
         renderDocuments();
-        document.getElementById("docPreview").style.display = "block";
-        // preview is not stored from server, just show local file if possible
+        document.getElementById("docPreview").classList.remove("hidden");
       }
 
       function previewDocument(file) {
@@ -271,16 +149,16 @@
         const url = URL.createObjectURL(file);
         if (file.type === "application/pdf") {
           preview.src = url;
-          preview.style.display = "block";
+          preview.classList.remove("hidden");
         } else if (file.type.startsWith("text/")) {
           const reader = new FileReader();
           reader.onload = () => {
             preview.srcdoc = `<pre>${reader.result}</pre>`;
-            preview.style.display = "block";
+            preview.classList.remove("hidden");
           };
           reader.readAsText(file);
         } else {
-          preview.style.display = "none";
+          preview.classList.add("hidden");
         }
       }
 
@@ -293,7 +171,8 @@
         if (!userText) return;
 
         const userDiv = document.createElement("div");
-        userDiv.className = "message user";
+        userDiv.className =
+          "max-w-[70%] self-end bg-blue-600 text-white px-4 py-2 rounded-2xl rounded-br-none";
         userDiv.textContent = userText;
         chat.appendChild(userDiv);
         chat.scrollTop = chat.scrollHeight;
@@ -301,7 +180,7 @@
         input.value = "";
 
         const typingDiv = document.createElement("div");
-        typingDiv.className = "typing";
+        typingDiv.className = "italic text-gray-500";
         typingDiv.textContent = "Bot is typing...";
         chat.appendChild(typingDiv);
         chat.scrollTop = chat.scrollHeight;
@@ -320,12 +199,12 @@
           typingDiv.remove();
 
           const botDiv = document.createElement("div");
-          botDiv.className = "message bot";
+          botDiv.className =
+            "max-w-[70%] self-start bg-gray-200 text-black px-4 py-2 rounded-2xl rounded-bl-none";
           botDiv.textContent = data.reply;
           chat.appendChild(botDiv);
           chat.scrollTop = chat.scrollHeight;
 
-          // Play sound on bot reply
           document.getElementById("botSound").play();
         } catch (err) {
           console.error(err);
