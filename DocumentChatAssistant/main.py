@@ -46,10 +46,7 @@ app.add_middleware(
 # LLM Setup
 # -------------------------
 base_url = os.getenv("BASE_URL_OLLAMA", "http://localhost:11434")
-system_prompt = os.getenv(
-    "EX_PROMPT",
-    "You are a helpful assistant for answering questions based on uploaded documents."
-)
+system_prompt = "You are a helpful assistant for answering questions based on uploaded documents."
 
 llm = ChatOllama(model="kimi-k2.5:cloud", base_url=base_url)
 
