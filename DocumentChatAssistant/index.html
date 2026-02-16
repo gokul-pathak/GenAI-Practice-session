@@ -86,9 +86,22 @@
       let sessionId = "default";
       const documents = [];
 
+      function showError(message) {
+        const chat = document.getElementById("chat");
+        const errorDiv = document.createElement("div");
+        errorDiv.className =
+          "max-w-[70%] self-center bg-red-100 text-red-600 px-4 py-2 rounded-xl text-sm";
+        errorDiv.textContent = message;
+        chat.appendChild(errorDiv);
+        chat.scrollTop = chat.scrollHeight;
+      }
+
       async function uploadFile() {
         const fileInput = document.getElementById("fileInput");
-        if (!fileInput.files.length) return alert("Select a file");
+        if (!fileInput.files.length) {
+          showError("Please select a file before uploading.");
+          return;
+        }
 
         const file = fileInput.files[0];
         const desc = document.getElementById("fileDesc").value;
@@ -104,29 +117,35 @@
             method: "POST",
             body: formData,
           });
+
+          if (!res.ok) {
+            throw new Error("Upload failed");
+          }
+
           const data = await res.json();
+
           if (data.status === "success") {
             currentDocumentId = data.document_id;
             document.getElementById("uploadStatus").textContent =
               `Uploaded: ${data.filename}`;
 
+            documents.length = 0; // clear old docs
             documents.push(data);
             renderDocuments();
             previewDocument(file);
           } else {
-            document.getElementById("uploadStatus").textContent =
-              "Upload failed";
+            showError("Upload failed.");
           }
         } catch (err) {
           console.error(err);
-          document.getElementById("uploadStatus").textContent =
-            "Error uploading file";
+          showError("Error uploading file. Server might be down.");
         }
       }
 
       function renderDocuments() {
         const list = document.getElementById("documentList");
         list.innerHTML = "";
+
         documents.forEach((doc) => {
           const div = document.createElement("div");
           div.className =
@@ -147,6 +166,7 @@
       function previewDocument(file) {
         const preview = document.getElementById("docPreview");
         const url = URL.createObjectURL(file);
+
         if (file.type === "application/pdf") {
           preview.src = url;
           preview.classList.remove("hidden");
@@ -163,12 +183,19 @@
       }
 
       async function sendMessage() {
-        if (!currentDocumentId) return alert("Upload a document first");
-
         const input = document.getElementById("message");
         const chat = document.getElementById("chat");
         const userText = input.value.trim();
-        if (!userText) return;
+
+        if (!currentDocumentId) {
+          showError("Please upload a document first.");
+          return;
+        }
+
+        if (!userText) {
+          showError("Message cannot be empty.");
+          return;
+        }
 
         const userDiv = document.createElement("div");
         userDiv.className =
@@ -195,26 +222,51 @@
               session_id: sessionId,
             }),
           });
+
+          if (!res.ok) {
+            throw new Error("Query failed");
+          }
+
           const data = await res.json();
           typingDiv.remove();
 
           const botDiv = document.createElement("div");
           botDiv.className =
             "max-w-[70%] self-start bg-gray-200 text-black px-4 py-2 rounded-2xl rounded-bl-none";
-          botDiv.textContent = data.reply;
+          botDiv.textContent = data.reply || "No response from server.";
           chat.appendChild(botDiv);
           chat.scrollTop = chat.scrollHeight;
 
           document.getElementById("botSound").play();
         } catch (err) {
           console.error(err);
-          typingDiv.textContent = "Error: Could not reach server";
+          typingDiv.remove();
+          showError("Error contacting server.");
         }
       }
 
       async function resetChat() {
         const chat = document.getElementById("chat");
         chat.innerHTML = "";
+
+        // Clear documents
+        documents.length = 0;
+        currentDocumentId = null;
+        renderDocuments();
+
+        // Clear preview
+        const preview = document.getElementById("docPreview");
+        preview.src = "";
+        preview.srcdoc = "";
+        preview.classList.add("hidden");
+
+        // Clear upload status
+        document.getElementById("uploadStatus").textContent = "";
+
+        // Clear file input
+        document.getElementById("fileInput").value = "";
+        document.getElementById("fileDesc").value = "";
+
         try {
           await fetch("http://127.0.0.1:8000/clear", {
             method: "POST",
