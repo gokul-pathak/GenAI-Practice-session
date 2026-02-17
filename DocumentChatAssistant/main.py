@@ -4,15 +4,14 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from typing import Any, Dict, List, cast
 import os
-import uuid
 import io
 import supabase
 
 from langchain_ollama import ChatOllama
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_community.chat_message_histories import ChatMessageHistory
+from rag.embeddings import embeddings
+from rag.splitter import text_splitter
 
 # -------------------------
 # Load Environment Variables
@@ -29,12 +28,14 @@ def get_env(name: str) -> str:
 
 SUPABASE_URL = get_env("SUPABASE_URL")
 SUPABASE_KEY = get_env("SUPABASE_KEY")
+
 sb_client = supabase.create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -------------------------
 # FastAPI Setup
 # -------------------------
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,35 +47,10 @@ app.add_middleware(
 # LLM Setup
 # -------------------------
 base_url = os.getenv("BASE_URL_OLLAMA", "http://localhost:11434")
-system_prompt = "You are a helpful assistant for answering questions based on uploaded documents."
 
-llm = ChatOllama(model="kimi-k2.5:cloud", base_url=base_url)
-
-# -------------------------
-# In-Memory Stores (Temporary)
-# -------------------------
-chat_store: dict[str, ChatMessageHistory] = {}
-document_store: dict[str, dict] = {}
-
-
-def get_session_history(session_id: str) -> ChatMessageHistory:
-    if session_id not in chat_store:
-        chat_store[session_id] = ChatMessageHistory()
-    return chat_store[session_id]
-
-
-prompt = ChatPromptTemplate.from_messages([
-    ("system", system_prompt),
-    MessagesPlaceholder(variable_name="history"),
-    ("human", "{input}")
-])
-
-chain = prompt | llm
-chat = RunnableWithMessageHistory(
-    chain,
-    get_session_history,
-    input_messages_key="input",
-    history_messages_key="history"
+llm = ChatOllama(
+    model="kimi-k2.5:cloud",
+    base_url=base_url
 )
 
 # -------------------------
@@ -83,11 +59,6 @@ chat = RunnableWithMessageHistory(
 class ChatRequest(BaseModel):
     document_id: str
     message: str
-    session_id: str = "default"
-
-
-class ClearRequest(BaseModel):
-    session_id: str = "default"
 
 
 # -------------------------
@@ -106,90 +77,128 @@ def get_file_extension(filename: str | None) -> str:
 async def upload_document(file: UploadFile = File(...)):
     try:
         ext = get_file_extension(file.filename)
-        doc_id = str(uuid.uuid4())
-        storage_filename = f"{doc_id}_{file.filename}"
         file_bytes = await file.read()
-        content = ""
 
+        # 1️⃣ Extract text
         if ext == "txt":
             content = file_bytes.decode("utf-8")
+
         elif ext == "pdf":
             import pdfplumber
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                 content = "\n".join(page.extract_text() or "" for page in pdf.pages)
+
         elif ext == "docx":
             from docx import Document
             doc = Document(io.BytesIO(file_bytes))
             content = "\n".join(p.text for p in doc.paragraphs)
+
         else:
             raise HTTPException(status_code=400, detail="Unsupported file type")
 
-        sb_client.storage.from_("documents").upload(storage_filename, file_bytes)
+        # 2️⃣ Store document metadata
+        doc_insert = sb_client.table("documents").insert({
+            "filename": file.filename
+        }).execute()
 
-        document_store[doc_id] = {
-            "filename": file.filename,
-            "storage_path": storage_filename,
-            "text": content
+        if not doc_insert.data:
+            raise HTTPException(status_code=500, detail="Failed to insert document")
+
+        rows = cast(List[Dict[str, Any]], doc_insert.data)
+
+        document_id = rows[0]["id"]
+
+        if not document_id:
+            raise HTTPException(status_code=500, detail="Document ID missing")
+
+
+        # 3️⃣ Chunk text
+        chunks = text_splitter.split_text(content)
+
+        # 4️⃣ Generate embeddings
+        vectors = embeddings.embed_documents(chunks)
+
+        # 5️⃣ Store chunks + embeddings
+        for chunk, vector in zip(chunks, vectors):
+            sb_client.table("document_chunks").insert({
+                "document_id": document_id,
+                "content": chunk,
+                "embedding": vector
+            }).execute()
+
+        return {
+            "status": "success",
+            "document_id": document_id,
+            "chunks_stored": len(chunks)
         }
 
-        return {"status": "success", "document_id": doc_id, "filename": file.filename}
-
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # -------------------------
-# Query Document Endpoint
+# Query Document Endpoint (REAL RAG)
 # -------------------------
 @app.post("/query_document")
 async def query_document(req: ChatRequest):
-    if req.document_id not in document_store:
-        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        # 1️⃣ Embed query
+        query_embedding = embeddings.embed_query(req.message)
 
-    doc_text = document_store[req.document_id]["text"]
-    query_prompt = f"""
-Use the following document to answer the question.
+        # 2️⃣ Retrieve relevant chunks via pgvector RPC
+        result = sb_client.rpc(
+            "match_chunks",
+            {
+                "query_embedding": query_embedding,
+                "match_count": 5,
+                "filter_document": req.document_id
+            }
+        ).execute()
 
-Document:
-{doc_text}
+        # 3️⃣ Build context
+        if not result.data:
+            raise HTTPException(status_code=404, detail="No relevant content found")
+
+        chunks_data = cast(List[Dict[str, Any]], result.data)
+
+
+        context_parts = []
+        source_ids = []
+
+        for row in chunks_data:
+            content = row.get("content")
+            chunk_id = row.get("id")
+
+            if content:
+                context_parts.append(content)
+            if chunk_id:
+                source_ids.append(chunk_id)
+
+        context = "\n\n".join(context_parts)
+
+
+        # 4️⃣ Construct final prompt
+        prompt = f"""
+You are an expert assistant.
+Answer ONLY using the provided context.
+If the answer is not in the context, say you don't know.
+
+Context:
+{context}
 
 Question:
 {req.message}
 """
 
-    try:
-        response = chat.invoke({"input": query_prompt}, config={"configurable": {"session_id": req.session_id}})
-        return {"reply": response.content}
+        # 5️⃣ Generate answer
+        response = llm.invoke(prompt)
+        source_ids = [row["id"] for row in chunks_data]
+
+        return {
+            "answer": response.content,
+            "sources": source_ids
+        }
+
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# -------------------------
-# Clear Chat Session and Delete Document
-# -------------------------
-@app.post("/clear")
-async def clear_context(req: ClearRequest):
-    # Clear chat session
-    if req.session_id in chat_store:
-        chat_store[req.session_id].clear()
-
-    # Delete all documents from memory and Supabase
-    removed_docs = []
-    for doc_id, doc in list(document_store.items()):
-        try:
-            # Remove from Supabase storage
-            sb_client.storage.from_("documents").remove([doc["storage_path"]])
-        except Exception as e:
-            # Log but continue
-            print(f"Error deleting {doc['storage_path']} from storage: {e}")
-        removed_docs.append(doc["filename"])
-        # Remove from in-memory store
-        del document_store[doc_id]
-
-    return {
-        "status": "success",
-        "message": f"Session '{req.session_id}' cleared",
-        "deleted_documents": removed_docs
-    }
