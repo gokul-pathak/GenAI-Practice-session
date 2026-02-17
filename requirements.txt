@@ -31,3 +31,4 @@ uvicorn
 supabase
 pdfplumber 
 python-docx
+langchain-text-splitters
