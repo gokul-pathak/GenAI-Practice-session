@@ -233,7 +233,7 @@
           const botDiv = document.createElement("div");
           botDiv.className =
             "max-w-[70%] self-start bg-gray-200 text-black px-4 py-2 rounded-2xl rounded-bl-none";
-          botDiv.textContent = data.reply || "No response from server.";
+          botDiv.textContent = data.answer || "No response from server.";
           chat.appendChild(botDiv);
           chat.scrollTop = chat.scrollHeight;
 
@@ -246,37 +246,53 @@
       }
 
       async function resetChat() {
-        const chat = document.getElementById("chat");
-        chat.innerHTML = "";
+      if (!currentDocumentId) {
+        document.getElementById("chat").innerHTML = "";
+        return;
+      }
 
-        // Clear documents
+      const confirmDelete = confirm(
+        "Are you sure you want to delete this document and all related data?"
+      );
+
+      if (!confirmDelete) return;
+
+      try {
+        const res = await fetch(
+          `http://127.0.0.1:8000/delete_document/${currentDocumentId}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+        if (!res.ok) {
+          throw new Error("Delete failed");
+        }
+
+        // 🔥 Clear chat UI
+        document.getElementById("chat").innerHTML = "";
+
+        // 🔥 Reset state
         documents.length = 0;
         currentDocumentId = null;
         renderDocuments();
 
-        // Clear preview
+        // 🔥 Clear preview
         const preview = document.getElementById("docPreview");
         preview.src = "";
         preview.srcdoc = "";
         preview.classList.add("hidden");
 
-        // Clear upload status
+        // 🔥 Clear inputs
         document.getElementById("uploadStatus").textContent = "";
-
-        // Clear file input
         document.getElementById("fileInput").value = "";
         document.getElementById("fileDesc").value = "";
 
-        try {
-          await fetch("http://127.0.0.1:8000/clear", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: sessionId }),
-          });
-        } catch (err) {
-          console.error(err);
-        }
+      } catch (err) {
+        console.error(err);
+        showError("Failed to delete document from server.");
       }
+    }
     </script>
   </body>
 </html>
