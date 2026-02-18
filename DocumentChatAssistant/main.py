@@ -202,3 +202,36 @@ Question:
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------------
+# Delete Document + Related Chunks
+# -------------------------
+@app.delete("/delete_document/{document_id}")
+async def delete_document(document_id: str):
+    try:
+        # 1️⃣ Delete chunks first
+        chunks_response = sb_client.table("document_chunks") \
+            .delete() \
+            .eq("document_id", document_id) \
+            .execute()
+
+        # 2️⃣ Delete document
+        doc_response = sb_client.table("documents") \
+            .delete() \
+            .eq("id", document_id) \
+            .execute()
+
+        # Optional: check if document existed
+        if not doc_response.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        return {
+            "status": "deleted",
+            "deleted_document_id": document_id,
+            "deleted_chunks": len(chunks_response.data or [])
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
